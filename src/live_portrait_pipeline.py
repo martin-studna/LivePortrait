@@ -75,12 +75,14 @@ class LivePortraitPipeline(object):
         return template_dct
 
     def execute(self, args: ArgumentConfig):
-        # for convenience
+        # This part loads the inference config, device, and crop config
         inf_cfg = self.live_portrait_wrapper.inference_cfg
         device = self.live_portrait_wrapper.device
         crop_cfg = self.cropper.crop_cfg
 
-        ######## load source input ########
+
+        # This part loads the source input and checks if it is a video or image
+        # In both cases, the source input is resized to the maximum dimension and divided by the source division.
         flag_is_source_video = False
         source_fps = None
         if is_image(args.source):
@@ -99,9 +101,17 @@ class LivePortraitPipeline(object):
             raise Exception(f"Unknown source format: {args.source}")
 
         ######## process driving info ########
+        # This part checks if the driving info is a template
+        # TODO: What is the driving template?
         flag_load_from_template = is_template(args.driving)
         driving_rgb_crop_256x256_lst = None
         wfp_template = None
+
+
+        '''
+            As far as I understand it, the driving template defines the motion for the source image/video.
+            It is used to speed up the animation process.
+        '''
 
         if flag_load_from_template:
             # NOTE: load from template, it is fast, but the cropping video is None
@@ -132,7 +142,7 @@ class LivePortraitPipeline(object):
                 output_fps = int(get_fps(args.driving))
                 log(f"Load driving video from: {args.driving}, FPS is {output_fps}")
                 driving_rgb_lst = load_video(args.driving)
-            elif is_image(args.driving):
+            elif is_image(args.driving): # TODO: I do not understand how an image can be used as a motion descriptor.
                 flag_is_driving_video = False
                 driving_img_rgb = load_image_rgb(args.driving)
                 output_fps = 25
@@ -161,7 +171,7 @@ class LivePortraitPipeline(object):
                 driving_lmk_crop_lst = self.cropper.calc_lmks_from_cropped_video(driving_rgb_lst)
                 driving_rgb_crop_256x256_lst = [cv2.resize(_, (256, 256)) for _ in driving_rgb_lst]  # force to resize to 256x256
             #######################################
-
+            # This part calculates the eye and lip ratios for the driving video
             c_d_eyes_lst, c_d_lip_lst = self.live_portrait_wrapper.calc_ratio(driving_lmk_crop_lst)
             # save the motion template
             I_d_lst = self.live_portrait_wrapper.prepare_videos(driving_rgb_crop_256x256_lst)
@@ -317,6 +327,7 @@ class LivePortraitPipeline(object):
                 x_d_0_info = x_d_i_info.copy()
 
             delta_new = x_s_info['exp'].clone()
+            #
             if inf_cfg.flag_relative_motion:
                 if inf_cfg.animation_region == "all" or inf_cfg.animation_region == "pose":
                     R_new = x_d_r_lst_smooth[i] if flag_is_source_video else (R_d_i @ R_d_0.permute(0, 2, 1)) @ R_s
